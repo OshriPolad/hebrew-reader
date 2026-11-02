@@ -9,3 +9,8 @@ venv/
 *.pdf
 samples/
 output/
+data/
+*.db
+*.part
+frontend/node_modules/
+frontend/dist/

@@ -2,13 +2,16 @@
 from pathlib import Path
 
 from .clean import clean_text
-from .extract import extract
+from .extract import Extracted, extract
 from .lang import chunk, segment_by_language
 
 
+def clean(extracted: Extracted) -> str:
+    return clean_text(extracted.text, hard_wrapped=(extracted.kind == "pdf"))
+
+
 def prepare_text(source: str) -> str:
-    raw, kind = extract(source)
-    return clean_text(raw, hard_wrapped=(kind == "pdf"))
+    return clean(extract(source))
 
 
 def text_to_mp3(text: str, out_path: str | Path, tts, on_progress=None) -> None:
