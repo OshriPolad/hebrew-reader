@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# Never commit content or generated audio
+*.mp3
+*.pdf
+samples/
+output/
