@@ -1,8 +1,31 @@
 # Hebrew Reader
 
-Turns Hebrew or English articles (URLs and PDFs) into natural-sounding audio, read **word for word**: no summarizing, no rewriting.
+Turns Hebrew or English articles (links and PDFs) into natural-sounding audio, read **word for word**: no summarizing, no rewriting.
 
 Built for a real user: a listener who wants articles read aloud while driving or doing chores.
+
+**Live in production:** self-hosted on an **Oracle Cloud** ARM VM (Ubuntu), running with **Docker Compose** behind **Caddy** (automatic HTTPS via Let's Encrypt).
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Demo: log in, add a link, wait for processing, play, skip, change speed, and resume where you stopped" width="320">
+</p>
+
+## Highlights
+
+- **Hebrew-first text pipeline:** fixes reversed word order and misplaced punctuation in RTL PDFs, strips citations and symbols so only words are spoken, and switches voices per paragraph for mixed Hebrew/English articles.
+- **Full stack:** Python core, FastAPI backend with background jobs and SQLite, React (Vite) mobile-first RTL UI, private podcast feed.
+- **Security:** SSRF protection with per-redirect validation, constant-time token auth, a separate listen-only feed token, validated uploads, non-root container, HTTPS + HSTS, no-referrer, no access logs.
+- **Cost control:** tracks billable characters exactly like Azure does, enforces the free-tier monthly quota *before* spending it, and shows "reading time left this month" in the UI.
+- **Tested:** 51 pytest tests (text cleaning, language split, SSML, API, feed, SSRF, quota).
+
+| Layer | Tech |
+|---|---|
+| Frontend | React 18, Vite, CSS (RTL, light/dark), Media Session API |
+| Backend | Python 3.12, FastAPI, Uvicorn, SQLite |
+| Text & speech | trafilatura, PyMuPDF, Azure Neural TTS (REST + SSML) |
+| Infra | Docker (multi-stage), Docker Compose, Caddy, Oracle Cloud (ARM), DuckDNS |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and design details, and [DEPLOY.md](DEPLOY.md) for the server setup.
 
 ## How it works
 
@@ -90,7 +113,8 @@ python -m pytest
 - [x] Phase 2: FastAPI backend + SQLite storage + background processing
 - [x] Phase 3: Mobile-first RTL web UI (React + Vite)
 - [x] Phase 4: Private podcast feed + Docker / Caddy deployment (see [DEPLOY.md](DEPLOY.md))
-- [ ] Phase 5: Testing with the real user
+- [x] Deployed to production (Oracle Cloud + Docker + Caddy)
+- [ ] Phase 5: Feedback from the real user
 
 ## License
 MIT
