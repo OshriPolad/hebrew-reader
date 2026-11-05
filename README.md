@@ -27,7 +27,7 @@ URL / PDF → extract → clean → split by language → chunk → Azure Neural
 ```bash
 python -m venv .venv
 .venv\Scripts\activate          # Windows  (source .venv/bin/activate on Mac/Linux)
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 copy .env.example .env          # then add your Azure Speech key + region
 ```
 
@@ -70,6 +70,9 @@ Interactive docs: http://127.0.0.1:8000/docs (click **Authorize** and paste your
 | `DELETE` | `/api/articles/{id}` | Remove article and audio |
 
 ### Security
+- **Production:** non-root container, app port not exposed (only via Caddy), HTTPS + HSTS,
+  `Referrer-Policy: no-referrer` and no access logs (tokens appear in audio URLs).
+- **Two tokens:** `APP_TOKEN` (full access) and `FEED_TOKEN` (listen-only podcast feed).
 - **Auth:** bearer token, compared in constant time (`secrets.compare_digest`).
 - **SSRF protection:** the server fetches user-supplied links, so every URL *and every redirect hop* is resolved and rejected if it points to a private/internal address (`127.0.0.1`, `10.x`, `169.254.169.254` cloud metadata...).
 - **Uploads:** size limit, PDF verified by magic bytes (not file name), server-generated file names (no path traversal), uploaded PDFs deleted after processing.
@@ -86,7 +89,7 @@ python -m pytest
 - [x] Phase 1: extraction + cleaning + TTS pipeline (CLI)
 - [x] Phase 2: FastAPI backend + SQLite storage + background processing
 - [x] Phase 3: Mobile-first RTL web UI (React + Vite)
-- [ ] Phase 4: Private podcast feed + deployment
+- [x] Phase 4: Private podcast feed + Docker / Caddy deployment (see [DEPLOY.md](DEPLOY.md))
 - [ ] Phase 5: Testing with the real user
 
 ## License

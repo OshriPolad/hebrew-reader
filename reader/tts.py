@@ -14,8 +14,20 @@ class TTSError(Exception):
     pass
 
 
+def _ssml_body(text: str) -> str:
+    return PARAGRAPH_PAUSE.join(escape(p) for p in text.split("\n\n") if p.strip())
+
+
+def billable_chars(text: str) -> int:
+    """
+    Azure bills every character inside the SSML (text, spaces, punctuation and markup
+    like <break>), except the <speak> and <voice> tags themselves.
+    """
+    return len(_ssml_body(text))
+
+
 def build_ssml(text: str, lang: str, voice: str) -> str:
-    body = PARAGRAPH_PAUSE.join(escape(p) for p in text.split("\n\n") if p.strip())
+    body = _ssml_body(text)
     return (
         f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' "
         f"xml:lang='{LOCALES[lang]}'><voice name='{voice}'>{body}</voice></speak>"

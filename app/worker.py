@@ -1,10 +1,11 @@
 """Background job: source -> MP3, updating the article's status."""
 import logging
+import threading
 from pathlib import Path
 
 from reader.extract import ExtractionError, from_html, from_pdf
-from reader.pipeline import clean, text_to_mp3
-from reader.tts import TTSError
+from reader.pipeline import clean, plan, text_to_mp3
+from reader.tts import TTSError, billable_chars
 
 from .config import Settings
 from .db import ArticleRepo
@@ -13,9 +14,17 @@ from .security import UnsafeURLError, safe_fetch
 log = logging.getLogger(__name__)
 MP3_BYTES_PER_SECOND = 96_000 / 8  # Azure output format is 96 kbps CBR
 
+# The free tier allows ~1 concurrent request: synthesize one article at a time.
+# (Fetching/cleaning still runs in parallel; only the TTS part waits.)
+_tts_lock = threading.Lock()
+
+
+class QuotaExceeded(Exception):
+    pass
+
 
 def _user_message(e: Exception) -> str:
-    if isinstance(e, (ExtractionError, UnsafeURLError)):
+    if isinstance(e, (ExtractionError, UnsafeURLError, QuotaExceeded)):
         return str(e)
     if isinstance(e, TTSError):
         return "The voice service failed. Please try again later."
@@ -34,11 +43,18 @@ def process_article(article_id: str, source_type: str, source: str,
             raise ExtractionError(
                 f"Article is too long ({len(text):,} characters, max {settings.max_chars:,})")
 
-        text_to_mp3(text, part, tts_factory())
+        cost = sum(billable_chars(c) for _, c in plan(text))
+        with _tts_lock:
+            # Check before spending anything: never burn quota on half an article.
+            if repo.get_usage() + cost > settings.monthly_quota:
+                raise QuotaExceeded("Monthly reading limit reached")
+            text_to_mp3(text, part, tts_factory(),
+                        on_chunk_done=lambda c: repo.add_usage(billable_chars(c)))
+
         final = settings.audio_dir / f"{article_id}.mp3"
         part.replace(final)  # atomic: never serve a half-written file
 
-        fields = dict(status="ready", error=None, char_count=len(text),
+        fields = dict(status="ready", error=None, char_count=cost,
                       duration_seconds=round(final.stat().st_size / MP3_BYTES_PER_SECOND, 1))
         if source_type == "url" and extracted.title:
             fields["title"] = extracted.title[:200]

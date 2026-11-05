@@ -20,9 +20,17 @@ CREATE TABLE IF NOT EXISTS articles (
     created_at       TEXT NOT NULL,
     updated_at       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS usage (
+    month TEXT PRIMARY KEY,          -- 'YYYY-MM' (UTC)
+    chars INTEGER NOT NULL DEFAULT 0 -- billable TTS characters sent this month
+);
 """
 UPDATABLE = {"title", "status", "error", "char_count", "duration_seconds",
              "position_seconds", "listened"}
+
+
+def current_month() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
 def _now() -> str:
@@ -95,3 +103,18 @@ class ArticleRepo:
                 " WHERE status = 'processing'",
                 ("Processing was interrupted. Please add it again.", _now()),
             ).rowcount
+
+    # ---- monthly TTS usage ----
+    def add_usage(self, chars: int, month: str | None = None) -> None:
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO usage (month, chars) VALUES (?, ?)"
+                " ON CONFLICT(month) DO UPDATE SET chars = chars + excluded.chars",
+                (month or current_month(), chars),
+            )
+
+    def get_usage(self, month: str | None = None) -> int:
+        with self._conn() as c:
+            row = c.execute("SELECT chars FROM usage WHERE month = ?",
+                            (month or current_month(),)).fetchone()
+        return row["chars"] if row else 0

@@ -4,12 +4,14 @@ import Login from "./Login.jsx";
 import AddArticle from "./AddArticle.jsx";
 import Library from "./Library.jsx";
 import Player from "./Player.jsx";
+import UsageMeter from "./UsageMeter.jsx";
 
 const POLL_MS = 3000;
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [articles, setArticles] = useState([]);
+  const [usage, setUsage] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [currentId, setCurrentId] = useState(null);
   const [error, setError] = useState("");
@@ -17,7 +19,9 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setArticles(await api.list());
+      const [list, u] = await Promise.all([api.list(), api.usage()]);
+      setArticles(list);
+      setUsage(u);
       setLoaded(true);
       setError("");
     } catch (e) {
@@ -59,6 +63,7 @@ export default function App() {
     <div className={`shell ${current ? "has-player" : ""}`}>
       <header className="masthead">
         <h1>ההקראות שלי</h1>
+        <UsageMeter usage={usage} />
       </header>
 
       <AddArticle onAdded={(a) => setArticles((list) => [a, ...list])} />

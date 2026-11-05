@@ -68,6 +68,25 @@ button, input { font: inherit; color: inherit; }
   margin: 8px 0 24px;
 }
 
+/* ---------- monthly usage ---------- */
+.masthead h1 { margin-bottom: 10px; }
+.usage { margin-bottom: 28px; }
+.usage-text { margin: 0 0 6px; color: var(--muted); font-size: 0.95rem; }
+.usage.low .usage-text { color: var(--warn); font-weight: 600; }
+.usage-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.usage-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.usage.low .usage-bar span { background: var(--warn); }
+
 /* ---------- buttons ---------- */
 button { cursor: pointer; border: 0; background: none; }
 button:disabled { cursor: default; opacity: 0.45; }

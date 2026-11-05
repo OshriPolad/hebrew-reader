@@ -51,6 +51,7 @@ function translateError(status, detail) {
 export const api = {
   health: () => request("/health"),
   list: () => request("/articles"),
+  usage: () => request("/usage"),
   addUrl: (url) => request("/articles/url", { method: "POST", json: { url } }),
   addPdf: (file) => {
     const form = new FormData();

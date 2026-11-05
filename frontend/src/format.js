@@ -14,6 +14,8 @@ export function minutes(seconds) {
 // Backend failure reasons -> plain Hebrew
 export function failureText(error) {
   if (!error) return "ההקראה לא הצליחה.";
+  if (error.includes("Monthly reading limit"))
+    return "נגמרה מכסת ההקראה של החודש. היא תתחדש בתחילת החודש הבא.";
   if (error.includes("too long")) return "הכתבה ארוכה מדי להקראה אחת.";
   if (error.includes("No article text") || error.includes("No readable"))
     return "לא נמצא טקסט לקריאה בעמוד הזה.";
@@ -23,4 +25,15 @@ export function failureText(error) {
   if (error.includes("returned an error") || error.includes("Could not"))
     return "לא הצלחנו לפתוח את הקישור.";
   return "ההקראה לא הצליחה.";
+}
+
+// ~150 spoken words per minute x ~6 characters per word
+const CHARS_PER_MINUTE = 900;
+
+export function listeningTimeLeft(chars) {
+  const min = Math.floor(chars / CHARS_PER_MINUTE);
+  if (min >= 120) return `כ-${Math.floor(min / 60)} שעות`;
+  if (min >= 60) return "כשעה";
+  if (min >= 2) return `כ-${min} דקות`;
+  return "פחות מ-2 דקות";
 }

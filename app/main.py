@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field, HttpUrl
 from reader.tts import AzureTTS
 
 from .config import Settings, load_settings
-from .db import ArticleRepo
+from .db import ArticleRepo, current_month
+from .feed import make_feed_router
 from .security import UnsafeURLError, make_auth, validate_public_url
 from .worker import process_article
 
@@ -33,6 +34,13 @@ class UrlIn(BaseModel):
 class ProgressIn(BaseModel):
     position_seconds: float | None = Field(default=None, ge=0)
     listened: bool | None = None
+
+
+class UsageOut(BaseModel):
+    month: str
+    used_chars: int
+    quota_chars: int
+    remaining_chars: int
 
 
 class ArticleOut(BaseModel):
@@ -96,6 +104,12 @@ def create_app(settings: Settings | None = None, tts_factory=None) -> FastAPI:
                             tts_factory)
         return article
 
+    @api.get("/usage", response_model=UsageOut)
+    def usage():
+        used = repo.get_usage()
+        return UsageOut(month=current_month(), used_chars=used, quota_chars=settings.monthly_quota,
+                        remaining_chars=max(0, settings.monthly_quota - used))
+
     @api.get("/articles", response_model=list[ArticleOut])
     def list_articles():
         return repo.list()
@@ -125,6 +139,8 @@ def create_app(settings: Settings | None = None, tts_factory=None) -> FastAPI:
         return Response(status_code=204)
 
     app.include_router(api)
+    if settings.feed_token:
+        app.include_router(make_feed_router(settings, repo))
     # Serve the built UI (npm run build) from the same server: one URL, no CORS.
     if FRONTEND_DIST.is_dir():
         app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="ui")
