@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11705C"/>
+      <stop offset="1" stop-color="#0A4639"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(0 -26)"><!-- headband -->
+  <path d="M250 640 V520 A262 262 0 0 1 774 520 V640" fill="none" stroke="#F2F6F4" stroke-width="66" stroke-linecap="round"/>
+  <!-- ear cups -->
+  <rect x="196" y="568" width="156" height="252" rx="64" fill="#F2F6F4"/>
+  <rect x="672" y="568" width="156" height="252" rx="64" fill="#F2F6F4"/>
+  <!-- voice: sound bars -->
+  <g fill="#7FD9C1">
+    <rect x="424" y="636" width="40" height="124" rx="20"/>
+    <rect x="492" y="586" width="40" height="224" rx="20"/>
+    <rect x="560" y="636" width="40" height="124" rx="20"/>
+  </g>
+</g></svg>
