@@ -28,7 +28,7 @@ class FakeTTS:
 def make_client(tmp_path, monkeypatch):
     monkeypatch.setattr(security.socket, "getaddrinfo",
                         lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))])
-    monkeypatch.setattr(worker, "safe_fetch", lambda url: HTML)
+    monkeypatch.setattr(worker, "safe_fetch", lambda url, **kw: HTML)
     FakeTTS.calls = 0
 
     def make(**kw):

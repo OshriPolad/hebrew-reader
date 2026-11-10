@@ -1,6 +1,6 @@
 # Hebrew Reader: Architecture
 
-Turns Hebrew/English articles (links and PDFs) into natural-sounding audio, read word for word, for one listener on her phone.
+Turns Hebrew/English articles (links, PDFs, Word files and photos, including scans) into natural-sounding audio, read word for word, for one listener on her phone.
 
 ## 1. System overview
 
@@ -12,7 +12,8 @@ flowchart LR
         Caddy["Caddy<br/>TLS + security headers<br/>:80 / :443"] --> App["FastAPI app<br/>API + UI + feed<br/>:8000 (internal)"]
         App --> Vol[("Docker volume<br/>SQLite + MP3s")]
     end
-    App -- "fetch article" --> Web["News sites"]
+    App -- "fetch article / file" --> Web["News sites"]
+    App -- "scanned page image → text" --> DocInt["Azure Document Intelligence<br/>(OCR)"]
     App -- "SSML → MP3" --> Azure["Azure Neural TTS"]
 ```
 
@@ -23,6 +24,8 @@ flowchart LR
 | Core | Python (`reader/`) | Extract → clean → split by language → TTS |
 | Storage | SQLite + files | Article metadata + MP3 files |
 | TTS | Azure Neural TTS (REST) | `he-IL-HilaNeural`, `en-US-AvaNeural` |
+| OCR | Azure Document Intelligence `prebuilt-read` | Scanned PDFs, photos, scanned Word files |
+| Conversion | LibreOffice (headless) | Legacy `.doc` / `.rtf` / `.odt` → `.docx` |
 | Infra | Docker Compose + Caddy | Containers, HTTPS (Let's Encrypt), reverse proxy |
 | Hosting | Oracle Cloud Always Free | ARM Ubuntu VM |
 
@@ -38,10 +41,25 @@ flowchart LR
 ## 3. Text pipeline (`reader/`)
 
 ```
-URL ──safe_fetch──▶ HTML ──trafilatura──┐
-                                        ├─▶ raw text ─▶ clean ─▶ speakable ─▶ split by language ─▶ chunk ─▶ Azure TTS ─▶ MP3
-PDF ──PyMuPDF (text blocks)─────────────┘
+URL ──safe_fetch──▶ bytes ──┬─ HTML ──trafilatura───────────────────────┐
+                            └─ file ─┐                                  │
+Upload ──────────────────────────────┤ detect type by magic bytes      │
+                                     ├─ PDF ── text pages: PyMuPDF ────┤
+                                     │         scanned pages: OCR ─────┤
+                                     ├─ .docx ── python-docx ──────────┤
+                                     ├─ .doc/.rtf/.odt ── LibreOffice ─┤──▶ raw text ─▶ clean ─▶ speakable
+                                     │                   → .docx       │      ─▶ split by language ─▶ chunk
+                                     └─ photo (JPEG/PNG/HEIC…) ── OCR ─┘      ─▶ Azure TTS ─▶ MP3
 ```
+
+### File formats and OCR (`extract.py`, `ocr.py`)
+
+- **Type detection** uses magic bytes only (`%PDF`, ZIP with `word/document.xml`, OLE2 for `.doc`, `{\rtf`, JPEG/PNG/TIFF/BMP/HEIF headers), never the file name or the server's `Content-Type`.
+- **PDF:** each page is read as text first. A page with almost no text but with images is treated as **scanned** and goes to OCR. Mixed PDFs keep their real text and OCR only the scanned pages.
+- **Word:** paragraphs and tables in document order (table cells become a short pause). A Word file that is basically pasted scans (very little text, some images) gets its images OCR'd.
+- **Legacy Word:** `.doc`/`.rtf`/`.odt` are converted to `.docx` by headless LibreOffice in a temporary profile, with a timeout, as the non-root container user.
+- **OCR engine:** Azure Document Intelligence `prebuilt-read` (Azure AI Vision OCR doesn't support Hebrew). Free tier: 500 pages/month, only the first 2 pages per request, 4 MB max, 1 request/second, so every page is rendered to a grayscale JPEG (200 → 110 DPI until < 4 MB) and sent **one page per request**, under a lock.
+- **Links to files:** a URL that returns a PDF/Word/image is handled exactly like an upload; the title comes from the file name in the URL.
 
 | Step | File | What it does |
 |---|---|---|
@@ -65,6 +83,7 @@ Hebrew-specific fixes:
 - Before synthesis, the job estimates the article's cost and **refuses** if it would exceed the monthly quota, so quota is never spent on half an article.
 - Usage is recorded **after each successful chunk** (what Azure actually bills) in the `usage` table, per UTC month.
 - A global lock synthesizes **one article at a time**, because the free tier allows very few concurrent requests.
+- **OCR pages** have their own monthly budget (500) and a per-document cap (30). The job counts the scanned pages first and refuses before calling OCR if either limit would be exceeded.
 - The UI converts remaining characters into listening time (~900 characters per minute).
 
 ## 5. Backend (`app/`)
@@ -84,7 +103,7 @@ Hebrew-specific fixes:
 |---|---|---|
 | `GET` | `/api/health` | Liveness check (public) |
 | `POST` | `/api/articles/url` | Add by link → `202` |
-| `POST` | `/api/articles/pdf` | Upload PDF (≤20 MB) → `202` |
+| `POST` | `/api/articles/file` | Upload PDF / Word / photo (≤20 MB) → `202` (`/articles/pdf` kept as an alias) |
 | `GET` | `/api/usage` | TTS characters used / left this month |
 | `GET` | `/api/articles` | Library, newest first |
 | `GET` | `/api/articles/{id}` | One article and its status |
@@ -101,7 +120,7 @@ Hebrew-specific fixes:
 |---|---|---|
 | `id` | TEXT PK | `uuid4().hex`, also the MP3 file name |
 | `title` | TEXT | Page title or PDF file name |
-| `source_type` | TEXT | `url` / `pdf` |
+| `source_type` | TEXT | `url` / `file` |
 | `source` | TEXT | URL or original file name |
 | `status` | TEXT | `processing` → `ready` / `failed` |
 | `error` | TEXT | Failure reason |
@@ -117,8 +136,11 @@ Hebrew-specific fixes:
 |---|---|---|
 | `month` | TEXT PK | `YYYY-MM` (UTC) |
 | `chars` | INT | Billable characters sent to Azure (added per successful chunk) |
+| `ocr_pages` | INT | Pages sent to OCR (added per successful page) |
 
-Files: `DATA_DIR/app.db`, `DATA_DIR/audio/{id}.mp3`. Uploads go to `DATA_DIR/uploads/{id}.pdf` and are deleted after processing.
+Older databases are **migrated automatically** at startup (new column added; the `articles` table is rebuilt to change `pdf` → `file`, keeping all rows).
+
+Files: `DATA_DIR/app.db`, `DATA_DIR/audio/{id}.mp3`. Uploads go to `DATA_DIR/uploads/{id}.upload` and are deleted after processing.
 
 ### Job lifecycle
 
@@ -155,7 +177,7 @@ Design: Hebrew RTL, 20px base type, 60px+ buttons, Assistant (UI) + Frank Ruhl L
 | Unauthorized access | `APP_TOKEN` bearer auth, constant-time comparison |
 | Feed link leaks | Separate listen-only `FEED_TOKEN`; wrong token returns 404 |
 | SSRF (server fetching user links) | Every URL **and redirect hop** resolved; non-public IPs rejected (`127.0.0.1`, `10.x`, `169.254.169.254`…) |
-| Malicious uploads | Size limit, `%PDF` magic-byte check, server-generated file names (no path traversal) |
+| Malicious uploads | Size limit, magic-byte type detection, server-generated file names (no path traversal), LibreOffice run headless with a throwaway profile, timeout and non-root user |
 | TTS quota abuse | Max 60,000 characters per article; monthly quota checked **before** synthesis |
 | Token leakage | HTTPS + HSTS, `Referrer-Policy: no-referrer`, access logs disabled |
 | Container compromise | Non-root user, app port internal only |
@@ -173,6 +195,8 @@ Design: Hebrew RTL, 20px base type, 60px+ buttons, Assistant (UI) + Frank Ruhl L
 | `DATA_DIR` | Database and audio location |
 | `DOMAIN`, `PUBLIC_URL` | Production domain for Caddy and feed links |
 | `MAX_CHARS`, `MONTHLY_CHAR_QUOTA` | Per-article cap and monthly TTS budget |
+| `AZURE_DOCINTEL_ENDPOINT`, `AZURE_DOCINTEL_KEY` | OCR (optional; empty = scans unsupported) |
+| `OCR_MONTHLY_PAGES`, `MAX_OCR_PAGES` | OCR budget per month / per document |
 
 ## 9. Repository layout
 
@@ -193,7 +217,8 @@ hebrew-reader/
 
 - **Background jobs are in-process.** A restart marks running jobs `failed`. A queue (e.g. RQ/Redis) would fix this, but it's unnecessary for one user.
 - **SSRF DNS-rebinding window.** The host is validated, then `requests` resolves it again. Pinning the resolved IP would close this gap.
-- **Scanned PDFs** need OCR, which isn't supported.
+- **OCR quality** depends on the scan: blurry photos or handwriting may read poorly (the read model handles printed Hebrew; handwriting support is limited).
+- **Old `.doc` files with embedded objects** (charts, equations) convert as text only.
 - **Tokens in query strings** for `<audio>` and the feed are mitigated by HTTPS, no-referrer, and no logs. Short-lived signed URLs would be stronger.
 - **Usage is an estimate.** It's tracked locally per UTC month; Azure's own meter (portal → Metrics → Synthesized Characters) is the source of truth.
 - **SQLite on a single server.** Fine for this scale; there's no horizontal scaling.

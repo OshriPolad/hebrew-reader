@@ -9,7 +9,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles (
     id               TEXT PRIMARY KEY,
     title            TEXT NOT NULL,
-    source_type      TEXT NOT NULL CHECK (source_type IN ('url', 'pdf')),
+    source_type      TEXT NOT NULL CHECK (source_type IN ('url', 'file')),
     source           TEXT NOT NULL,
     status           TEXT NOT NULL CHECK (status IN ('processing', 'ready', 'failed')),
     error            TEXT,
@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS articles (
 );
 CREATE TABLE IF NOT EXISTS usage (
     month TEXT PRIMARY KEY,          -- 'YYYY-MM' (UTC)
-    chars INTEGER NOT NULL DEFAULT 0 -- billable TTS characters sent this month
+    chars INTEGER NOT NULL DEFAULT 0, -- billable TTS characters sent this month
+    ocr_pages INTEGER NOT NULL DEFAULT 0 -- pages sent to OCR this month
 );
 """
 UPDATABLE = {"title", "status", "error", "char_count", "duration_seconds",
@@ -50,6 +51,25 @@ class ArticleRepo:
         self.path = path
         with self._conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Upgrade databases created by older versions (keeps all data)."""
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(usage)")}
+        if "ocr_pages" not in cols:
+            c.execute("ALTER TABLE usage ADD COLUMN ocr_pages INTEGER NOT NULL DEFAULT 0")
+        sql = c.execute("SELECT sql FROM sqlite_master WHERE name = 'articles'").fetchone()["sql"]
+        if "'pdf'" in sql:  # v0.5 and earlier allowed only url/pdf: rebuild with url/file
+            c.executescript("""
+                ALTER TABLE articles RENAME TO articles_old;
+            """ + SCHEMA.split("CREATE TABLE IF NOT EXISTS usage")[0] + """
+                INSERT INTO articles SELECT id, title,
+                    CASE source_type WHEN 'pdf' THEN 'file' ELSE source_type END,
+                    source, status, error, char_count, duration_seconds, position_seconds,
+                    listened, created_at, updated_at FROM articles_old;
+                DROP TABLE articles_old;
+            """)
 
     @contextmanager
     def _conn(self):
@@ -118,3 +138,17 @@ class ArticleRepo:
             row = c.execute("SELECT chars FROM usage WHERE month = ?",
                             (month or current_month(),)).fetchone()
         return row["chars"] if row else 0
+
+    def add_ocr_usage(self, pages: int, month: str | None = None) -> None:
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO usage (month, ocr_pages) VALUES (?, ?)"
+                " ON CONFLICT(month) DO UPDATE SET ocr_pages = ocr_pages + excluded.ocr_pages",
+                (month or current_month(), pages),
+            )
+
+    def get_ocr_usage(self, month: str | None = None) -> int:
+        with self._conn() as c:
+            row = c.execute("SELECT ocr_pages FROM usage WHERE month = ?",
+                            (month or current_month(),)).fetchone()
+        return row["ocr_pages"] if row else 0

@@ -29,7 +29,7 @@ class FakeTTS:
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(data_dir=tmp_path, app_token=TOKEN, max_pdf_bytes=1_000_000)
+    return Settings(data_dir=tmp_path, app_token=TOKEN, max_upload_bytes=1_000_000)
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def client(settings, monkeypatch):
         return real(host, *a, **kw)
 
     monkeypatch.setattr(security.socket, "getaddrinfo", fake_getaddrinfo)
-    monkeypatch.setattr(worker, "safe_fetch", lambda url: ARTICLE_HTML)
+    monkeypatch.setattr(worker, "safe_fetch", lambda url, **kw: ARTICLE_HTML)
     FakeTTS.calls = []
     return TestClient(create_app(settings, tts_factory=FakeTTS))
 
@@ -115,7 +115,7 @@ def test_ssrf_blocked(client, url):
 
 
 def test_failed_extraction_reports_error(client, monkeypatch):
-    monkeypatch.setattr(worker, "safe_fetch", lambda url: b"<html><body></body></html>")
+    monkeypatch.setattr(worker, "safe_fetch", lambda url, **kw: b"<html><body></body></html>")
     r = client.post("/api/articles/url", headers=AUTH, json={"url": "https://news.example/x"})
     a = client.get(f"/api/articles/{r.json()['id']}", headers=AUTH).json()
     assert a["status"] == "failed" and "No article text" in a["error"]

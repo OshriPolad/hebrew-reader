@@ -15,6 +15,8 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
+from reader.extract import detect_kind
+from reader.ocr import AzureOCR
 from reader.tts import AzureTTS
 
 from .config import Settings, load_settings
@@ -41,12 +43,15 @@ class UsageOut(BaseModel):
     used_chars: int
     quota_chars: int
     remaining_chars: int
+    ocr_enabled: bool
+    ocr_pages_used: int
+    ocr_pages_quota: int
 
 
 class ArticleOut(BaseModel):
     id: str
     title: str
-    source_type: Literal["url", "pdf"]
+    source_type: Literal["url", "file"]
     status: Literal["processing", "ready", "failed"]
     error: str | None
     char_count: int | None
@@ -57,15 +62,17 @@ class ArticleOut(BaseModel):
     updated_at: str
 
 
-def create_app(settings: Settings | None = None, tts_factory=None) -> FastAPI:
+def create_app(settings: Settings | None = None, tts_factory=None, ocr_factory=None) -> FastAPI:
     logging.basicConfig(level=logging.INFO)
     settings = settings or load_settings()
     settings.ensure_dirs()
     repo = ArticleRepo(settings.db_path)
     repo.fail_interrupted()
     tts_factory = tts_factory or AzureTTS.from_env
+    if ocr_factory is None and settings.ocr_enabled:
+        ocr_factory = lambda: AzureOCR(settings.ocr_endpoint, settings.ocr_key)  # noqa: E731
 
-    app = FastAPI(title="Hebrew Reader API", version="0.2.0")
+    app = FastAPI(title="Hebrew Reader API", version="1.1.0")
     api = APIRouter(prefix="/api", dependencies=[Depends(make_auth(settings.app_token))])
 
     def get_or_404(article_id: str) -> dict:
@@ -86,29 +93,41 @@ def create_app(settings: Settings | None = None, tts_factory=None) -> FastAPI:
         except UnsafeURLError as e:
             raise HTTPException(400, str(e))
         article = repo.create(title=urlparse(url).hostname or url, source_type="url", source=url)
-        background.add_task(process_article, article["id"], "url", url, repo, settings, tts_factory)
+        background.add_task(process_article, article["id"], "url", url, repo, settings,
+                            tts_factory, ocr_factory)
         return article
 
-    @api.post("/articles/pdf", status_code=202, response_model=ArticleOut)
-    async def add_pdf(background: BackgroundTasks, file: UploadFile = File(...)):
-        data = await file.read(settings.max_pdf_bytes + 1)
-        if len(data) > settings.max_pdf_bytes:
-            raise HTTPException(413, f"PDF is larger than {settings.max_pdf_bytes // 2**20} MB")
-        if not data.startswith(b"%PDF"):  # check the content, not the file name
-            raise HTTPException(400, "File is not a PDF")
+    async def _add_file(background: BackgroundTasks, file: UploadFile) -> dict:
+        data = await file.read(settings.max_upload_bytes + 1)
+        if len(data) > settings.max_upload_bytes:
+            raise HTTPException(413, f"File is larger than {settings.max_upload_bytes // 2**20} MB")
+        if not detect_kind(data):  # check the content (magic bytes), never the file name
+            raise HTTPException(400, "Unsupported file type")
         title = Path(file.filename or "document").stem.replace("_", " ").strip()[:200] or "document"
-        article = repo.create(title=title, source_type="pdf", source=title)
-        path = settings.upload_dir / f"{article['id']}.pdf"  # server-chosen name: no path traversal
+        article = repo.create(title=title, source_type="file", source=title)
+        path = settings.upload_dir / f"{article['id']}.upload"  # server-chosen name: no path traversal
         path.write_bytes(data)
-        background.add_task(process_article, article["id"], "pdf", str(path), repo, settings,
-                            tts_factory)
+        background.add_task(process_article, article["id"], "file", str(path), repo, settings,
+                            tts_factory, ocr_factory, title)
         return article
+
+    @api.post("/articles/file", status_code=202, response_model=ArticleOut)
+    async def add_file(background: BackgroundTasks, file: UploadFile = File(...)):
+        """PDF (text or scanned), Word (.docx/.doc/.rtf/.odt) or a photo of a page."""
+        return await _add_file(background, file)
+
+    @api.post("/articles/pdf", status_code=202, response_model=ArticleOut, deprecated=True)
+    async def add_pdf(background: BackgroundTasks, file: UploadFile = File(...)):
+        """Kept for older clients: same as /articles/file."""
+        return await _add_file(background, file)
 
     @api.get("/usage", response_model=UsageOut)
     def usage():
         used = repo.get_usage()
         return UsageOut(month=current_month(), used_chars=used, quota_chars=settings.monthly_quota,
-                        remaining_chars=max(0, settings.monthly_quota - used))
+                        remaining_chars=max(0, settings.monthly_quota - used),
+                        ocr_enabled=ocr_factory is not None, ocr_pages_used=repo.get_ocr_usage(),
+                        ocr_pages_quota=settings.ocr_monthly_pages)
 
     @api.get("/articles", response_model=list[ArticleOut])
     def list_articles():

@@ -66,7 +66,10 @@ export default function App() {
         <UsageMeter usage={usage} />
       </header>
 
-      <AddArticle onAdded={(a) => setArticles((list) => [a, ...list])} />
+      <AddArticle
+        ocrEnabled={Boolean(usage?.ocr_enabled)}
+        onAdded={(a) => setArticles((list) => [a, ...list])}
+      />
 
       {error && <p className="banner" role="alert">{error}</p>}
 

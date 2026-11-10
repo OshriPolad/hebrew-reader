@@ -52,11 +52,12 @@ def speakable(paragraph: str) -> str:
 BIDI_MARKS = re.compile(r"[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 
-def strip_repeating_lines(pages: list[str], ratio: float = 0.5, edge: int = 3) -> list[str]:
+def strip_repeating_lines(pages: list[str], ratio: float = 0.5, edge: int = 3,
+                          max_len: int = 80) -> list[str]:
     """
-    Remove headers/footers: lines in the top/bottom `edge` lines of a page that
+    Remove headers/footers: SHORT lines in the top/bottom `edge` lines of a page that
     repeat on most pages (digits ignored, so "Page 3" matches "Page 4").
-    Body lines are never touched.
+    Body text is never touched, and a page is never emptied completely.
     """
     if len(pages) < 3:
         return pages
@@ -66,18 +67,19 @@ def strip_repeating_lines(pages: list[str], ratio: float = 0.5, edge: int = 3) -
 
     def edges(lines: list[str]) -> set[int]:
         idx = [i for i, l in enumerate(lines) if l.strip()]
-        return set(idx[:edge] + idx[-edge:])
+        return {i for i in idx[:edge] + idx[-edge:] if len(lines[i].strip()) <= max_len}
 
     split = [p.splitlines() for p in pages]
     counts = Counter()
     for lines in split:
         counts.update({key(lines[i]) for i in edges(lines)})
     repeated = {k for k, c in counts.items() if c >= len(pages) * ratio}
-    return [
-        "\n".join(l for i, l in enumerate(lines)
-                  if not (i in edges(lines) and key(l) in repeated))
-        for lines in split
-    ]
+    out = []
+    for original, lines in zip(pages, split):
+        kept = "\n".join(l for i, l in enumerate(lines)
+                         if not (i in edges(lines) and key(l) in repeated))
+        out.append(kept if kept.strip() or not original.strip() else original)
+    return out
 
 
 def clean_text(text: str, hard_wrapped: bool) -> str:

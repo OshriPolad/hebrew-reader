@@ -1,6 +1,6 @@
 # Hebrew Reader
 
-Turns Hebrew or English articles (links and PDFs) into natural-sounding audio, read **word for word**: no summarizing, no rewriting.
+Turns Hebrew or English articles (links, PDFs, Word files and photos, including scanned documents) into natural-sounding audio, read **word for word**: no summarizing, no rewriting.
 
 Built for a real user: a listener who wants articles read aloud while driving or doing chores.
 
@@ -13,16 +13,17 @@ Built for a real user: a listener who wants articles read aloud while driving or
 ## Highlights
 
 - **Hebrew-first text pipeline:** fixes reversed word order and misplaced punctuation in RTL PDFs, strips citations and symbols so only words are spoken, and switches voices per paragraph for mixed Hebrew/English articles.
+- **Any source, even scans:** web pages, PDFs (text, scanned or mixed), Word `.docx` and legacy `.doc`/`.rtf`/`.odt` (via headless LibreOffice), photos of printed pages, and links that point straight to a file. Scanned pages go through Azure Document Intelligence OCR (Hebrew supported), one page at a time to fit the free tier.
 - **Full stack:** Python core, FastAPI backend with background jobs and SQLite, React (Vite) mobile-first RTL UI, private podcast feed.
 - **Security:** SSRF protection with per-redirect validation, constant-time token auth, a separate listen-only feed token, validated uploads, non-root container, HTTPS + HSTS, no-referrer, no access logs.
-- **Cost control:** tracks billable characters exactly like Azure does, enforces the free-tier monthly quota *before* spending it, and shows "reading time left this month" in the UI.
-- **Tested:** 51 pytest tests (text cleaning, language split, SSML, API, feed, SSRF, quota).
+- **Cost control:** tracks billable TTS characters and OCR pages exactly like Azure counts them, enforces both free-tier monthly quotas *before* spending them, and shows "reading time left this month" in the UI.
+- **Tested:** 75 pytest tests (text cleaning, language split, SSML, file formats, OCR, API, feed, SSRF, quotas, DB migration).
 
 | Layer | Tech |
 |---|---|
 | Frontend | React 18, Vite, CSS (RTL, light/dark), Media Session API |
 | Backend | Python 3.12, FastAPI, Uvicorn, SQLite |
-| Text & speech | trafilatura, PyMuPDF, Azure Neural TTS (REST + SSML) |
+| Text & speech | trafilatura, PyMuPDF, python-docx, LibreOffice (headless), Azure Document Intelligence (OCR), Azure Neural TTS (REST + SSML) |
 | Infra | Docker (multi-stage), Docker Compose, Caddy, Oracle Cloud (ARM), DuckDNS |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and design details, and [DEPLOY.md](DEPLOY.md) for the server setup.
@@ -85,7 +86,7 @@ Interactive docs: http://127.0.0.1:8000/docs (click **Authorize** and paste your
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/articles/url` | Add an article by link → `202`, processed in background |
-| `POST` | `/api/articles/pdf` | Upload a PDF (max 20 MB) → `202` |
+| `POST` | `/api/articles/file` | Upload a PDF, Word file or photo (max 20 MB) → `202` |
 | `GET` | `/api/articles` | Library, newest first |
 | `GET` | `/api/articles/{id}` | Status: `processing` / `ready` / `failed` |
 | `GET` | `/api/articles/{id}/audio` | MP3 stream (supports seeking) |
@@ -98,7 +99,7 @@ Interactive docs: http://127.0.0.1:8000/docs (click **Authorize** and paste your
 - **Two tokens:** `APP_TOKEN` (full access) and `FEED_TOKEN` (listen-only podcast feed).
 - **Auth:** bearer token, compared in constant time (`secrets.compare_digest`).
 - **SSRF protection:** the server fetches user-supplied links, so every URL *and every redirect hop* is resolved and rejected if it points to a private/internal address (`127.0.0.1`, `10.x`, `169.254.169.254` cloud metadata...).
-- **Uploads:** size limit, PDF verified by magic bytes (not file name), server-generated file names (no path traversal), uploaded PDFs deleted after processing.
+- **Uploads:** size limit, file type verified by magic bytes (never the file name), server-generated file names (no path traversal), uploaded files deleted after processing.
 - **Quota protection:** character limit per article protects the TTS budget.
 - **Atomic writes:** audio is written to `.part` then renamed, so a half-generated file is never served.
 

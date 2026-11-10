@@ -10,8 +10,8 @@ def clean(extracted: Extracted) -> str:
     return clean_text(extracted.text, hard_wrapped=(extracted.kind == "pdf"))
 
 
-def prepare_text(source: str) -> str:
-    return clean(extract(source))
+def prepare_text(source: str, ocr=None) -> str:
+    return clean(extract(source, ocr))
 
 
 def plan(text: str) -> list[tuple[str, str]]:

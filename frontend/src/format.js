@@ -16,10 +16,21 @@ export function failureText(error) {
   if (!error) return "ההקראה לא הצליחה.";
   if (error.includes("Monthly reading limit"))
     return "נגמרה מכסת ההקראה של החודש. היא תתחדש בתחילת החודש הבא.";
+  if (error.includes("Scanned document is too long"))
+    return "המסמך הסרוק ארוך מדי. אפשר עד 30 עמודים סרוקים.";
   if (error.includes("too long")) return "הכתבה ארוכה מדי להקראה אחת.";
+  if (error.includes("No readable text found in the image")) return "לא נמצא טקסט בתמונה. נסו לצלם שוב, קרוב וחד יותר.";
   if (error.includes("No article text") || error.includes("No readable"))
     return "לא נמצא טקסט לקריאה בעמוד הזה.";
-  if (error.includes("no text layer")) return "זה PDF סרוק (תמונה). אפשר להקריא רק PDF עם טקסט.";
+  if (error.includes("Monthly scanning limit"))
+    return "נגמרה מכסת הסריקה של החודש. היא תתחדש בתחילת החודש הבא.";
+  if (error.includes("OCR is not configured") || error.includes("no text layer"))
+    return "זה מסמך סרוק, וקריאת סריקות עדיין לא הופעלה בשרת.";
+  if (error.includes("scanning service")) return "שירות קריאת הסריקות לא זמין כרגע. נסו שוב מאוחר יותר.";
+  if (error.includes("Old Word files")) return "קובצי Word ישנים (doc.) לא נתמכים בשרת.";
+  if (error.includes("Could not open this Word file")) return "לא הצלחנו לפתוח את קובץ ה-Word.";
+  if (error.includes("Unsupported file type")) return "סוג הקובץ לא נתמך.";
+  if (error.includes("too large")) return "הקובץ גדול מדי.";
   if (error.includes("voice service")) return "שירות ההקראה לא זמין כרגע. נסו שוב מאוחר יותר.";
   if (error.includes("interrupted")) return "ההכנה נקטעה. הוסיפו את הכתבה שוב.";
   if (error.includes("returned an error") || error.includes("Could not"))

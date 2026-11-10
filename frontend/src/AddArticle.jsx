@@ -1,11 +1,20 @@
 import { useRef, useState } from "react";
 import { api } from "./api.js";
 
-export default function AddArticle({ onAdded }) {
+const ACCEPT = [
+  "application/pdf", ".pdf",
+  ".docx", ".doc", ".rtf", ".odt",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+  "image/*", ".heic",
+].join(",");
+
+export default function AddArticle({ onAdded, ocrEnabled }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
   async function run(promise) {
     setBusy(true);
@@ -29,7 +38,7 @@ export default function AddArticle({ onAdded }) {
   async function pickFile(e) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow picking the same file again
-    if (file) await run(api.addPdf(file));
+    if (file) await run(api.addFile(file));
   }
 
   async function pasteFromClipboard() {
@@ -68,10 +77,27 @@ export default function AddArticle({ onAdded }) {
 
       <div className="or" aria-hidden="true">או</div>
 
-      <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={pickFile} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ACCEPT}
+        hidden
+        onChange={pickFile}
+      />
       <button className="secondary" disabled={busy} onClick={() => fileRef.current.click()}>
-        בחירת קובץ PDF
+        בחירת קובץ
       </button>
+      <p className="hint file-types">קובצי PDF, Word ותמונות, גם סרוקים</p>
+
+      {ocrEnabled && (
+        <>
+          {/* Opens the camera on phones: photograph a printed page and hear it */}
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={pickFile} />
+          <button className="secondary camera" disabled={busy} onClick={() => cameraRef.current.click()}>
+            צילום דף מודפס
+          </button>
+        </>
+      )}
 
       {busy && <p className="hint" role="status">שולח…</p>}
       {error && <p className="field-error" role="alert">{error}</p>}

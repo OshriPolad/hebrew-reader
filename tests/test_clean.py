@@ -85,3 +85,15 @@ def test_punctuation_preserved_for_pauses():
 
 def test_symbol_only_paragraph_dropped():
     assert clean_text("טקסט.\n***\nעוד.", hard_wrapped=False) == "טקסט.\n\nעוד."
+
+
+def test_long_repeated_lines_are_body_not_headers():
+    body = "זוהי פסקה ארוכה מאוד שמופיעה בעמוד ונראית דומה בין עמודים כי רק המספר משתנה בה, עמוד "
+    pages = [f"כותרת\n{body}{i}\nעמוד {i}" for i in range(1, 5)]
+    out = strip_repeating_lines(pages)
+    assert all(body in p for p in out) and all("כותרת" not in p for p in out)
+
+
+def test_page_is_never_emptied():
+    pages = [f"שורה {i}" for i in range(1, 5)]  # only short repeated lines
+    assert strip_repeating_lines(pages) == pages

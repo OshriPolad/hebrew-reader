@@ -3,7 +3,8 @@ import { listeningTimeLeft } from "./format.js";
 // How much reading is left this month (Azure free tier), in words she understands: time.
 export default function UsageMeter({ usage }) {
   if (!usage) return null;
-  const { used_chars, quota_chars, remaining_chars } = usage;
+  const { used_chars, quota_chars, remaining_chars, ocr_enabled, ocr_pages_used, ocr_pages_quota } = usage;
+  const pagesLeft = Math.max(0, (ocr_pages_quota || 0) - (ocr_pages_used || 0));
   const usedPct = Math.min(100, Math.round((used_chars / quota_chars) * 100));
   const low = remaining_chars < quota_chars * 0.15;
   const empty = remaining_chars <= 0;
@@ -25,6 +26,9 @@ export default function UsageMeter({ usage }) {
       >
         <span style={{ width: `${usedPct}%` }} />
       </div>
+      {ocr_enabled && ocr_pages_used > 0 && (
+        <p className="usage-sub">נותרו החודש {pagesLeft} עמודים סרוקים</p>
+      )}
     </div>
   );
 }

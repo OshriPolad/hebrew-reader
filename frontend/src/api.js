@@ -40,7 +40,8 @@ async function request(path, { method = "GET", json, form } = {}) {
 function translateError(status, detail) {
   if (status === 401) return "קוד הכניסה שגוי.";
   if (status === 413) return "הקובץ גדול מדי (עד 20MB).";
-  if (detail?.includes("not a PDF")) return "הקובץ שנבחר אינו PDF.";
+  if (detail?.includes("Unsupported file type"))
+    return "סוג הקובץ לא נתמך. אפשר PDF, Word או תמונה.";
   if (detail?.includes("private or internal")) return "אי אפשר להוסיף את הקישור הזה.";
   if (detail?.includes("Could not find")) return "האתר לא נמצא. בדקו שהקישור נכון.";
   if (detail?.includes("http")) return "יש להדביק קישור שמתחיל ב-https://";
@@ -53,10 +54,10 @@ export const api = {
   list: () => request("/articles"),
   usage: () => request("/usage"),
   addUrl: (url) => request("/articles/url", { method: "POST", json: { url } }),
-  addPdf: (file) => {
+  addFile: (file) => {
     const form = new FormData();
     form.append("file", file);
-    return request("/articles/pdf", { method: "POST", form });
+    return request("/articles/file", { method: "POST", form });
   },
   update: (id, fields) => request(`/articles/${id}`, { method: "PATCH", json: fields }),
   remove: (id) => request(`/articles/${id}`, { method: "DELETE" }),

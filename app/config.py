@@ -13,9 +13,17 @@ class Settings:
     app_token: str
     feed_token: str = ""  # empty -> podcast feed disabled
     public_url: str = ""  # e.g. https://reader.duckdns.org (used for links inside the feed)
-    max_pdf_bytes: int = 20 * 1024 * 1024
+    max_upload_bytes: int = 20 * 1024 * 1024  # uploads and files behind links
+    ocr_endpoint: str = ""  # Azure Document Intelligence; empty -> scanned files unsupported
+    ocr_key: str = ""
+    ocr_monthly_pages: int = 500  # Document Intelligence free tier
+    max_ocr_pages: int = 30  # per document
     max_chars: int = 60_000  # per article (~10,000 words, ~1 hour of audio)
     monthly_quota: int = 500_000  # Azure F0 free tier: 0.5M characters / month
+
+    @property
+    def ocr_enabled(self) -> bool:
+        return bool(self.ocr_endpoint and self.ocr_key)
 
     @property
     def db_path(self) -> Path:
@@ -49,4 +57,8 @@ def load_settings() -> Settings:
         public_url=os.getenv("PUBLIC_URL", "").rstrip("/"),
         max_chars=int(os.getenv("MAX_CHARS", "60000")),
         monthly_quota=int(os.getenv("MONTHLY_CHAR_QUOTA", "500000")),
+        ocr_endpoint=os.getenv("AZURE_DOCINTEL_ENDPOINT", ""),
+        ocr_key=os.getenv("AZURE_DOCINTEL_KEY", ""),
+        ocr_monthly_pages=int(os.getenv("OCR_MONTHLY_PAGES", "500")),
+        max_ocr_pages=int(os.getenv("MAX_OCR_PAGES", "30")),
     )

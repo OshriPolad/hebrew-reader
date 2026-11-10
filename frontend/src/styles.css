@@ -86,6 +86,9 @@ button, input { font: inherit; color: inherit; }
   border-radius: 3px;
 }
 .usage.low .usage-bar span { background: var(--warn); }
+.usage-sub { margin: 6px 0 0; color: var(--muted); font-size: 0.85rem; }
+.file-types { text-align: center; margin: 8px 0 0; font-size: 0.85rem; }
+.secondary.camera { margin-top: 12px; }
 
 /* ---------- buttons ---------- */
 button { cursor: pointer; border: 0; background: none; }

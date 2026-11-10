@@ -50,7 +50,7 @@ def validate_public_url(url: str) -> None:
             raise UnsafeURLError("Link points to a private or internal address")
 
 
-def safe_fetch(url: str, max_redirects: int = 5, max_bytes: int = 5 * 1024 * 1024,
+def safe_fetch(url: str, max_redirects: int = 5, max_bytes: int = 20 * 1024 * 1024,
                timeout: int = 15) -> bytes:
     """GET a page, re-validating every redirect hop (a public URL can redirect to 127.0.0.1)."""
     for _ in range(max_redirects + 1):
@@ -67,7 +67,7 @@ def safe_fetch(url: str, max_redirects: int = 5, max_bytes: int = 5 * 1024 * 102
             for part in resp.iter_content(64 * 1024):
                 body += part
                 if len(body) > max_bytes:
-                    raise UnsafeURLError("Page is too large")
+                    raise UnsafeURLError("The file behind the link is too large")
             return body
         finally:
             resp.close()
